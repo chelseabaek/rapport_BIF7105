@@ -3,7 +3,7 @@ title: "Analyse d’expression différentielle pour un séquençage de l’ARN a
 author: "-"
 date: "12 décembre 2025"
 output:
-  pdf_document:
+  bookdown::pdf_document2:
     toc: true
     toc_depth: 2
     number_sections: true
@@ -16,9 +16,9 @@ toc-title: "Table des matières"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-options(width=100)
+options(width = 100)
 ```
-  
+
 <!-- 
 Révision critique d'un outil bioinformatique (ou package R): description de 
 l'application et des jeux de données, de la problématique, des tests d'hypothèses 
@@ -73,7 +73,6 @@ library(edgeR)
 ```
 
 Les données sont téléchargées du [**DOI**](https://doi.org/10.1371/journal.pone.0009317.s009) (*the Digital Object Identifier*).
-<!-- Les gènes de ces données sont identifiés par leurs « *Entrez Gene ID* », les identifiants numériques uniques attribués aux gènes par le NCBI [@EntrezGeneID]. -->
 Avant de lire les données, nous avons supprimé les colonnes qui n'étaient pas 
 pertinentes pour notre étude. Nous avons également renommé certaines colonnes 
 (`idRefSeq` à `RefSeqID`, `nameOfGene` à `Symbol`, `numberOfExons` à `NbrOfExons`).
@@ -83,30 +82,31 @@ head(rawdata, 3)
 ```
 
 ## Création d'un objet *DGEList*
-
-Un objet *DGEList* est un conteneur pour les *RNA-seq counts* et toutes les 
-métadonnées associées [@DGEList]. Nous stockerons nos données dans un 
-objet *DGEList* pour faciliter leur manipulation.
+Nous stockerons nos données dans l'objet *DGEList* pour faciliter leur manipulation.
+Cet objet, conçu spécifiquement pour edgeR, peut être manipulé comme une liste. 
+*DGEList* est un structure de données qui comprend toutes les composantes nécessaires 
+(une matrice *counts* contenant les integer *counts*, un data-frame *samples* contenant 
+des informations sur les échantillons et les librairies, et un data-frame *genes* 
+contenant des annotations sur les gènes) dans un seul objet [@DGEList]. 
 
 ```{r}
 y <- DGEList(counts = rawdata[,4:9], genes = rawdata[,1:3])
 ```
 
 ## Annotation
-L'étude [@oralCarcinoma] a été réalisée en 2010 ; par conséquent, tous les `RefSeqID`s
-ne sont plus utilisés actuellement. Nous n'utiliserons que les *RefSeq transcripts* qui 
-possèdent des *ID*s dans l'annotation [**NCBI**](https://www.ncbi.nlm.nih.gov) actuelle 
-(fournie par le package org.Hs.eg.db). 
+L'étude [@oralCarcinoma] a été réalisée en 2010 ; par conséquent, certains des `RefSeqID`s
+ne sont plus utilisés. Nous filtrons les *RefSeq ID*s qui ne sont plus disponibles 
+dans l'annotation actuelle du [**NCBI**](https://www.ncbi.nlm.nih.gov) (fournie par le package `org.Hs.eg.db`). 
 
 ```{r}
 idfound <- y$genes$RefSeqID %in% mappedRkeys(org.Hs.egREFSEQ)
 y <- y[idfound,]
-dim(y)
+dim(y) # 15534 sur 15668 RefSeqIDs sont retenus
 ```
 
-Les *Entrez Gene ID*s sont les identifiants numériques uniques attribués aux 
-gènes par le NCBI [@EntrezGeneID]. Nous ajoutons les *Entrez Gene ID*s 
-correspondants à l'annotation. 
+*Entrez Gene ID*s sont les identifiants numériques uniques attribués aux 
+gènes par le NCBI [@EntrezGeneID]. Pour chaque gène, *Entrez Gene* donne des détails tels que
+le nom du gène et sa localisation chromosomique. Nous ajoutons les *Entrez Gene ID*s à l'annotation. 
 ```{r}
 egREFSEQ <- toTable(org.Hs.egREFSEQ)
 head(egREFSEQ, 3)
@@ -123,10 +123,9 @@ y$genes$Symbol <- egSYMBOL$symbol[m]
 head(y$genes, 3)
 ```
 
-## Filtrage des gènes 
-Les différents *RefSeq transcript*s associés au même *gene symbol* présentent 
-majoritairement les mêmes *reads*.
-Nous ne conserverons qu'un seul *RefSeq transcript* (celui avec le *count* le plus élevé) pour chaque gène.
+## Filtration 
+Plusieurs transcrits *RefSeq* correspondent au même gène. Nous ne gardons qu'un seul 
+transcrit *RefSeq* (celui avec le *count* le plus élevé) pour chaque gène.
 ```{r}
 o <- order(rowSums(y$counts))
 y <- y[o,]
@@ -134,6 +133,9 @@ d <- duplicated(y$genes$Symbol)
 y <- y[!d,]
 nrow(y)
 ```
+Tous les transcrits se retrouvent au moins 50 fois dans au
+moins un des 6 cas, donc ce n'est pas nécessaire de filtrer les gènes qui 
+sont faiblement exprimés. 
 
 Ensuite, nous recalculons la taille du `library`.
 ```{r}
@@ -162,6 +164,21 @@ y$samples
 Résultats et discussions (2 à 3 pages)
 -->
 
+## Exploration des données
+Nous voulons voir s'il existe des valeurs aberrantes ou d'autres corrélations 
+dans notre échantillon. La fonction `plotMDS` produit un plot dans lequel les 
+distances entre les échantillons représentent approximativement les différences d'expression [@plotMDS].\
+Sur le plot (**figure \@ref(fig:fig1)**), la dimension 1 sépare les échantillons 
+tumoraux des échantillons normaux et la dimension 2 correspond au numéro du patient. 
+On peut observer que les échantillons non tumoraux sont proches les 
+uns des autres, tandis que les échantillons tumoraux sont plus espacés. Donc, les 
+échantillons tumoraux sont plus hétérogènes que les échantillons normaux.
+
+```{r fig1, fig.cap = "plotMDS(y)", fig.width = 4, fig.height = 4, fig.align='center'}
+plotMDS(y)
+```
+
+## Matrice de design
 ## Analyse des données
 Nous voulons voir s'il existe des valeurs aberrantes ou d'autres corrélations 
 dans notre échantillon. La fonction `plotMDS` produit un plot dans lequel les 
@@ -193,7 +210,10 @@ y <- estimateDisp(y, design, robust = TRUE)
 y$common.dispersion
 ```
 La racine carrée du *common dispersion*, `0.1613`, nous donne le BCV (biological coefficient of variation), `0.402`.
-```{r, out.width = "65%", fig.align='center'}
+```{r}
+sqrt(y$common.dispersion) # BCV
+```
+```{r plot2, fig.cap = "", out.width = "65%", fig.align='center'}
 plotBCV(y)
 ```
 
@@ -231,7 +251,12 @@ abline(h=c(-1, 1), col="blue")
 ## Gene Ontology Analysis
 ```{r}
 go <- goana(lrt)
-topGO(go, ont="BP", sort="Up", n=15, truncate=45)
+topGO(go, ont="BP", sort="Up", n=10, truncate=45)
+```
+
+```{r}
+go <- goana(lrt)
+topGO(go, ont="BP", sort="Down", n=10, truncate=45)
 ```
 
 # Conclusion
